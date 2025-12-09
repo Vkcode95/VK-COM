@@ -21,17 +21,14 @@ jobs:
         run: |
           set -e
 
-          # create flutter project
           flutter create vk_shop_app
           cd vk_shop_app
 
-          # if firebase config exists in repo, copy it into android app folder
           if [ -f ../.github/firebase/google-services.json ]; then
             mkdir -p android/app
             cp ../.github/firebase/google-services.json android/app/google-services.json
           fi
 
-          # write app main
           cat << 'EOF' > lib/main.dart
           import 'package:flutter/material.dart';
 
