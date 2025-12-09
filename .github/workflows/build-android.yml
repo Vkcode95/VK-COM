@@ -22,7 +22,7 @@ jobs:
           set -e
 
           # create flutter project
-          flutter create vk_shop_app
+          flutter create --org com.vk --project-name store vk_shop_app
           cd vk_shop_app
 
           # copy firebase config if present in repo
