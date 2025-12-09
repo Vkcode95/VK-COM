@@ -215,5 +215,3 @@ jobs:
         with:
           name: vk-shop-apk
           path: vk_shop_app/build/app/outputs/flutter-apk/app-release.apk
-        add build workflow
-        
