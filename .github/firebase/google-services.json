@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "601535184676",
+    "project_id": "vkcom360-5f727",
+    "storage_bucket": "vkcom360-5f727.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:601535184676:android:dbc35a8c9fb7be215f3db1",
+        "android_client_info": {
+          "package_name": "com.vk.store"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-eRyAsleJihYr5CGfcuNK3PMEGh6DFvc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
