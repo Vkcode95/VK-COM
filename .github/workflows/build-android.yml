@@ -19,10 +19,14 @@ jobs:
           flutter-version: "3.24.0"
 
       - name: Create Flutter project and build APK
-        run: |
-          flutter create vk_shop_app
-          cd vk_shop_app
+        run: flutter create vk_shop_app
+cd vk_shop_app
 
+# copy firebase config if present in repo
+if [ -f ../.github/firebase/google-services.json ]; then
+  mkdir -p android/app
+  cp ../.github/firebase/google-services.json android/app/google-services.json
+fi
           cat << 'EOF' > lib/main.dart
           import 'package:flutter/material.dart';
 
