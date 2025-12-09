@@ -1,4 +1,4 @@
-name: Build VK Shop APK
+name: Build VK Shop APK (Firebase + Auth)
 
 on:
   workflow_dispatch:
@@ -17,22 +17,60 @@ jobs:
         with:
           flutter-version: "3.24.0"
 
-      - name: Create Flutter project and build APK
+      - name: Create Flutter project, add firebase, build APK
         run: |
           set -e
 
+          # create flutter project
           flutter create vk_shop_app
           cd vk_shop_app
 
+          # copy firebase config if present in repo
           if [ -f ../.github/firebase/google-services.json ]; then
             mkdir -p android/app
             cp ../.github/firebase/google-services.json android/app/google-services.json
           fi
 
-          cat << 'EOF' > lib/main.dart
-          import 'package:flutter/material.dart';
+          # Replace pubspec.yaml to include firebase packages
+          cat > pubspec.yaml << 'PUB'
+          name: vk_shop_app
+          description: VK Store with Firebase Auth
+          publish_to: 'none'
+          version: 1.0.0+1
 
-          void main() {
+          environment:
+            sdk: ">=3.0.0 <4.0.0"
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            cupertino_icons: ^1.0.6
+            firebase_core: ^3.27.0
+            firebase_auth: ^4.7.0
+            google_sign_in: ^6.1.0
+            provider: ^6.1.2
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+
+          flutter:
+            uses-material-design: true
+          PUB
+
+          flutter pub get
+
+          # Write a new main.dart with Firebase initialization and login UI
+          mkdir -p lib
+          cat > lib/main.dart << 'EOF'
+          import 'package:flutter/material.dart';
+          import 'package:firebase_core/firebase_core.dart';
+          import 'package:firebase_auth/firebase_auth.dart';
+          import 'package:google_sign_in/google_sign_in.dart';
+
+          Future<void> main() async {
+            WidgetsFlutterBinding.ensureInitialized();
+            await Firebase.initializeApp();
             runApp(const VkShopApp());
           }
 
@@ -48,163 +86,140 @@ jobs:
                   useMaterial3: true,
                   colorSchemeSeed: Colors.indigo,
                 ),
-                home: const HomeScreen(),
+                home: const AuthGate(),
+              );
+            }
+          }
+
+          class AuthGate extends StatelessWidget {
+            const AuthGate({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return StreamBuilder<User?>(
+                stream: FirebaseAuth.instance.authStateChanges(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                  }
+                  if (snapshot.hasData) {
+                    return const HomeScreen();
+                  } else {
+                    return const LoginScreen();
+                  }
+                },
+              );
+            }
+          }
+
+          class LoginScreen extends StatefulWidget {
+            const LoginScreen({super.key});
+            @override
+            State<LoginScreen> createState() => _LoginScreenState();
+          }
+
+          class _LoginScreenState extends State<LoginScreen> {
+            final TextEditingController _email = TextEditingController();
+            final TextEditingController _password = TextEditingController();
+            bool _loading = false;
+            String? _error;
+
+            Future<void> _signInEmail() async {
+              setState(() { _loading = true; _error = null; });
+              try {
+                await FirebaseAuth.instance.signInWithEmailAndPassword(
+                  email: _email.text.trim(),
+                  password: _password.text.trim(),
+                );
+              } on FirebaseAuthException catch (e) {
+                if (e.code == 'user-not-found') {
+                  try {
+                    await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                      email: _email.text.trim(),
+                      password: _password.text.trim(),
+                    );
+                  } on FirebaseAuthException catch (e2) {
+                    _error = e2.message;
+                  }
+                } else {
+                  _error = e.message;
+                }
+              } finally {
+                if (mounted) setState(() { _loading = false; });
+              }
+            }
+
+            Future<void> _signInGoogle() async {
+              setState(() { _loading = true; _error = null; });
+              try {
+                final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+                if (googleUser == null) return;
+                final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+                final credential = GoogleAuthProvider.credential(
+                  accessToken: googleAuth.accessToken,
+                  idToken: googleAuth.idToken,
+                );
+                await FirebaseAuth.instance.signInWithCredential(credential);
+              } catch (e) {
+                _error = e.toString();
+              } finally {
+                if (mounted) setState(() { _loading = false; });
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('VK Store — Login')),
+                body: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
+                      const SizedBox(height: 12),
+                      TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+                      const SizedBox(height: 16),
+                      if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: _loading ? null : _signInEmail,
+                        child: _loading ? const CircularProgressIndicator() : const Text('Sign in (or create)'),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: _loading ? null : _signInGoogle,
+                        child: const Text('Sign in with Google'),
+                      ),
+                    ],
+                  ),
+                ),
               );
             }
           }
 
           class HomeScreen extends StatelessWidget {
             const HomeScreen({super.key});
-
             @override
             Widget build(BuildContext context) {
+              final user = FirebaseAuth.instance.currentUser;
               return Scaffold(
                 appBar: AppBar(
                   title: const Text('VK Store'),
-                  centerTitle: true,
-                ),
-                body: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    const Text(
-                      'Welcome to VK Store',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Your future e-commerce app. This is just the first version – a simple design to test the APK build. Later we will add login, products, cart, orders, and payments.',
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Sample Categories',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: const [
-                        CategoryChip(label: 'Electronics'),
-                        CategoryChip(label: 'Fashion'),
-                        CategoryChip(label: 'Home & Kitchen'),
-                        CategoryChip(label: 'Books'),
-                        CategoryChip(label: 'Groceries'),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Featured Products (Static Demo)',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ProductCard(
-                      title: 'Wireless Headphones',
-                      subtitle: 'Great sound, long battery',
-                      price: '₹1,999',
-                    ),
-                    ProductCard(
-                      title: 'Running Shoes',
-                      subtitle: 'Comfortable & durable',
-                      price: '₹2,499',
-                    ),
-                    ProductCard(
-                      title: 'Smart Watch',
-                      subtitle: 'Track health & fitness',
-                      price: '₹3,999',
-                    ),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.logout),
+                      onPressed: () async { await FirebaseAuth.instance.signOut(); },
+                    )
                   ],
                 ),
-              );
-            }
-          }
-
-          class CategoryChip extends StatelessWidget {
-            final String label;
-            const CategoryChip({super.key, required this.label});
-
-            @override
-            Widget build(BuildContext context) {
-              return Chip(
-                label: Text(label),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              );
-            }
-          }
-
-          class ProductCard extends StatelessWidget {
-            final String title;
-            final String subtitle;
-            final String price;
-
-            const ProductCard({
-              super.key,
-              required this.title,
-              required this.subtitle,
-              required this.price,
-            });
-
-            @override
-            Widget build(BuildContext context) {
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
+                body: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: Colors.grey.shade200,
-                        ),
-                        child: const Icon(Icons.shopping_bag_outlined),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              subtitle,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              price,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () {},
-                        child: const Text('Add'),
-                      ),
+                      Text('Logged in as ${user?.email ?? user?.uid ?? "User"}'),
+                      const SizedBox(height: 12),
+                      const Text('This is a basic home screen. Next we will add products, cart and orders.'),
                     ],
                   ),
                 ),
@@ -213,6 +228,7 @@ jobs:
           }
           EOF
 
+          # get packages and build release APK
           flutter pub get
           flutter build apk --release
 
