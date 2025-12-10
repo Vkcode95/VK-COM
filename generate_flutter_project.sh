@@ -1,2 +1,2 @@
 #!/bin/bash
-flutter create .
+flutter cr
